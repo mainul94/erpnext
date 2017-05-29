@@ -1,6 +1,8 @@
 ## temp utility
 
 import frappe
+from erpnext.utilities.activation import get_level
+from frappe.utils import cstr
 
 def update_doctypes():
 	for d in frappe.db.sql("""select df.parent, df.fieldname
@@ -25,9 +27,10 @@ def get_site_info(site_info):
 		company = company[0][0] if company else None
 
 	if company:
-		domain = frappe.db.get_value('Company', company, 'domain')
+		domain = frappe.db.get_value('Company', cstr(company), 'domain')
 
 	return {
 		'company': company,
-		'domain': domain
+		'domain': domain,
+		'activation': get_level()
 	}

@@ -6,6 +6,13 @@
 frappe.ui.form.on("Sales Order", {
 	setup: function(frm) {
 		$.extend(frm.cscript, new erpnext.selling.SalesOrderController({frm: frm}));
+		frm.custom_make_buttons = {
+			'Delivery Note': 'Delivery',
+			'Sales Invoice': 'Invoice',
+			'Material Request': 'Material Request',
+			'Purchase Order': 'Purchase Order'
+		}
+		frm.add_fetch('customer', 'tax_id', 'tax_id');
 	},
 	onload: function(frm) {
 		erpnext.queries.setup_queries(frm, "Warehouse", function() {
@@ -23,7 +30,9 @@ frappe.ui.form.on("Sales Order", {
 
 		// formatter for material request item
 		frm.set_indicator_formatter('item_code',
-			function(doc) { return (doc.qty<=doc.delivered_qty) ? "green" : "orange" })
+			function(doc) { return (doc.stock_qty<=doc.delivered_qty) ? "green" : "orange" })
+
+		erpnext.queries.setup_warehouse_query(frm);
 	}
 });
 
@@ -127,12 +136,14 @@ erpnext.selling.SalesOrderController = erpnext.selling.SellingController.extend(
 					erpnext.utils.map_current_doc({
 						method: "erpnext.selling.doctype.quotation.quotation.make_sales_order",
 						source_doctype: "Quotation",
+						target: me.frm,
+						setters: {
+							customer: me.frm.doc.customer || undefined
+						},
 						get_query_filters: {
+							company: me.frm.doc.company,
 							docstatus: 1,
 							status: ["!=", "Lost"],
-							order_type: me.frm.doc.order_type,
-							customer: me.frm.doc.customer || undefined,
-							company: me.frm.doc.company
 						}
 					})
 				}, __("Get items from"));
@@ -169,11 +180,11 @@ erpnext.selling.SalesOrderController = erpnext.selling.SellingController.extend(
 							fields: [
 								{fieldtype:'Read Only', fieldname:'item_code',
 									label: __('Item Code'), in_list_view:1},
-								{fieldtype:'Link', fieldname:'bom', options: 'BOM',
+								{fieldtype:'Link', fieldname:'bom', options: 'BOM', reqd: 1,
 									label: __('Select BOM'), in_list_view:1, get_query: function(doc) {
 										return {filters: {item: doc.item_code}};
 									}},
-								{fieldtype:'Float', fieldname:'pending_qty',
+								{fieldtype:'Float', fieldname:'pending_qty', reqd: 1,
 									label: __('Qty'), in_list_view:1},
 							],
 							get_data: function() {

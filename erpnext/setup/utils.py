@@ -3,18 +3,9 @@
 
 from __future__ import unicode_literals
 import frappe
-from frappe import _, throw
+from frappe import _
 from frappe.utils import flt
 from frappe.utils import get_datetime_str, nowdate
-
-def get_company_currency(company):
-	currency = frappe.db.get_value("Company", company, "default_currency", cache=True)
-	if not currency:
-		currency = frappe.db.get_default("currency")
-	if not currency:
-		throw(_('Please specify Default Currency in Company Master and Global Defaults'))
-
-	return currency
 
 def get_root_of(doctype):
 	"""Get root element of a DocType with a tree structure"""
@@ -100,8 +91,7 @@ def get_exchange_rate(from_currency, to_currency, transaction_date=None):
 			response.raise_for_status()
 			value = response.json()["rates"][to_currency]
 			cache.setex(key, value, 6 * 60 * 60)
-
 		return flt(value)
 	except:
-		frappe.msgprint(_("Unable to find exchange rate for {0} to {1} for key date {2}").format(from_currency, to_currency, transaction_date))
+		frappe.msgprint(_("Unable to find exchange rate for {0} to {1} for key date {2}. Please create a Currency Exchange record manually").format(from_currency, to_currency, transaction_date))
 		return 0.0

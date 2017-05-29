@@ -75,7 +75,7 @@ class Opportunity(TransactionBase):
 			self.lead = lead_name
 
 	def declare_enquiry_lost(self,arg):
-		if not self.has_quotation():
+		if not self.has_active_quotation():
 			frappe.db.set(self, 'status', 'Lost')
 			frappe.db.set(self, 'order_lost_reason', arg)
 		else:
@@ -84,20 +84,31 @@ class Opportunity(TransactionBase):
 	def on_trash(self):
 		self.delete_events()
 
-	def has_quotation(self):
-		return frappe.db.get_value("Quotation Item", {"prevdoc_docname": self.name, "docstatus": 1})
+	def has_active_quotation(self):
+		return frappe.db.sql("""
+			select q.name 
+			from `tabQuotation` q, `tabQuotation Item` qi
+			where q.name = qi.parent and q.docstatus=1 and qi.prevdoc_docname =%s 
+			and q.status not in ('Lost', 'Closed')""", self.name)
 
 	def has_ordered_quotation(self):
-		return frappe.db.sql("""select q.name from `tabQuotation` q, `tabQuotation Item` qi
-			where q.name = qi.parent and q.docstatus=1 and qi.prevdoc_docname =%s and q.status = 'Ordered'""", self.name)
+		return frappe.db.sql("""
+			select q.name 
+			from `tabQuotation` q, `tabQuotation Item` qi
+			where q.name = qi.parent and q.docstatus=1 and qi.prevdoc_docname =%s 
+			and q.status = 'Ordered'""", self.name)
 
 	def has_lost_quotation(self):
-		return frappe.db.sql("""
+		lost_quotation = frappe.db.sql("""
 			select q.name
 			from `tabQuotation` q, `tabQuotation Item` qi
 			where q.name = qi.parent and q.docstatus=1
 				and qi.prevdoc_docname =%s and q.status = 'Lost'
 			""", self.name)
+		if lost_quotation:
+			if self.has_active_quotation():
+				return False
+			return True
 
 	def validate_cust_name(self):
 		if self.customer:
@@ -178,6 +189,7 @@ def get_item_details(item_code):
 @frappe.whitelist()
 def make_quotation(source_name, target_doc=None):
 	def set_missing_values(source, target):
+		from erpnext.controllers.accounts_controller import get_default_taxes_and_charges
 		quotation = frappe.get_doc(target)
 
 		company_currency = frappe.db.get_value("Company", quotation.company, "default_currency")
@@ -193,6 +205,11 @@ def make_quotation(source_name, target_doc=None):
 				quotation.transaction_date)
 
 		quotation.conversion_rate = exchange_rate
+
+		# get default taxes
+		taxes = get_default_taxes_and_charges("Sales Taxes and Charges Template")
+		if taxes:
+			quotation.extend("taxes", taxes)
 
 		quotation.run_method("set_missing_values")
 		quotation.run_method("calculate_taxes_and_totals")
@@ -245,3 +262,15 @@ def set_multiple_status(names, status):
 		opp = frappe.get_doc("Opportunity", name)
 		opp.status = status
 		opp.save()
+
+def auto_close_opportunity():
+	""" auto close the `Replied` Opportunities after 7 days """
+	auto_close_after_days = frappe.db.get_value("Support Settings", "Support Settings", "close_opportunity_after_days") or 15
+
+	opportunities = frappe.db.sql(""" select name from tabOpportunity where status='Replied' and
+		modified<DATE_SUB(CURDATE(), INTERVAL %s DAY) """, (auto_close_after_days), as_dict=True)
+
+	for opportunity in opportunities:
+		doc = frappe.get_doc("Opportunity", opportunity.get("name"))
+		doc.status = "Closed"
+		doc.save(ignore_permissions=True)

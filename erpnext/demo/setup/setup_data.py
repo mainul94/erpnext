@@ -14,6 +14,7 @@ def setup(domain):
 	setup_holiday_list()
 	setup_user()
 	setup_employee()
+	setup_user_roles()
 
 	employees = frappe.get_all('Employee',  fields=['name', 'date_of_joining'])
 
@@ -24,7 +25,6 @@ def setup(domain):
 	setup_salary_structure(employees[5:], 1)
 
 	setup_leave_allocation()
-	setup_user_roles()
 	setup_customer()
 	setup_supplier()
 	setup_warehouse()
@@ -62,6 +62,13 @@ def complete_setup(domain='Manufacturing'):
 			"country": 'United States',
 			"language": "english"
 		})
+
+		company = erpnext.get_default_company()
+
+		if company:
+			company_doc = frappe.get_doc("Company", company)
+			company_doc.db_set('default_payroll_payable_account',
+				frappe.db.get_value('Account', dict(account_name='Payroll Payable')))
 
 def setup_demo_page():
 	# home page should always be "start"
@@ -135,6 +142,7 @@ def setup_salary_structure(employees, salary_slip_based_on_timesheet=0):
 	for e in employees:
 		ss.append('employees', {
 			'employee': e.name,
+			'from_date': "2015-01-01",
 			'base': random.random() * 10000
 		})
 

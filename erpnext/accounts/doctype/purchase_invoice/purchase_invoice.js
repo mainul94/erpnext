@@ -2,10 +2,13 @@
 // License: GNU General Public License v3. See license.txt
 
 frappe.provide("erpnext.accounts");
-{% include 'erpnext/buying/doctype/purchase_common/purchase_common.js' %};
-
+{% include 'erpnext/public/js/controllers/buying.js' %};
 
 erpnext.accounts.PurchaseInvoice = erpnext.buying.BuyingController.extend({
+	setup: function(doc) {
+		this.setup_posting_date_time_check();
+		this._super(doc);
+	},
 	onload: function() {
 		this._super();
 
@@ -40,35 +43,44 @@ erpnext.accounts.PurchaseInvoice = erpnext.buying.BuyingController.extend({
 			}
 
 			if(doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
-				cur_frm.add_custom_button(doc.update_stock ? __('Purchase Return') : __('Debit Note'),
+				cur_frm.add_custom_button(__('Return / Debit Note'),
 					this.make_debit_note, __("Make"));
 			}
 		}
 
 		if(doc.docstatus===0) {
-			cur_frm.add_custom_button(__('Purchase Order'), function() {
+			var me = this;
+			this.frm.add_custom_button(__('Purchase Order'), function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_invoice",
 					source_doctype: "Purchase Order",
+					target: me.frm,
+					setters: {
+						supplier: me.frm.doc.supplier || undefined,
+					},
 					get_query_filters: {
-						supplier: cur_frm.doc.supplier || undefined,
 						docstatus: 1,
 						status: ["!=", "Closed"],
 						per_billed: ["<", 99.99],
-						company: cur_frm.doc.company
+						company: me.frm.doc.company
 					}
 				})
 			}, __("Get items from"));
 
-			cur_frm.add_custom_button(__('Purchase Receipt'), function() {
+			this.frm.add_custom_button(__('Purchase Receipt'), function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.stock.doctype.purchase_receipt.purchase_receipt.make_purchase_invoice",
 					source_doctype: "Purchase Receipt",
+					target: me.frm,
+					date_field: "posting_date",
+					setters: {
+						supplier: me.frm.doc.supplier || undefined,
+					},
 					get_query_filters: {
-						supplier: cur_frm.doc.supplier || undefined,
 						docstatus: 1,
 						status: ["!=", "Closed"],
-						company: cur_frm.doc.company
+						company: me.frm.doc.company,
+						is_return: 0
 					}
 				})
 			}, __("Get items from"));
@@ -117,7 +129,7 @@ erpnext.accounts.PurchaseInvoice = erpnext.buying.BuyingController.extend({
 		hide_fields(this.frm.doc);
 		if(cint(this.frm.doc.is_paid)) {
 			if(!this.frm.doc.company) {
-				cur_frm.set_value("is_paid", 0)
+				this.frm.set_value("is_paid", 0)
 				msgprint(__("Please specify Company to proceed"));
 			}
 		}
@@ -205,6 +217,7 @@ function hide_fields(doc) {
 
 cur_frm.cscript.update_stock = function(doc, dt, dn) {
 	hide_fields(doc, dt, dn);
+	this.frm.fields_dict.items.grid.toggle_reqd("item_code", doc.update_stock? true: false)
 }
 
 cur_frm.fields_dict.cash_bank_account.get_query = function(doc) {
@@ -324,6 +337,12 @@ cur_frm.cscript.select_print_heading = function(doc,cdt,cdn){
 }
 
 frappe.ui.form.on("Purchase Invoice", {
+	setup: function(frm) {
+		frm.custom_make_buttons = {
+			'Purchase Invoice': 'Debit Note',
+			'Payment Entry': 'Payment'
+		}
+	},
 	onload: function(frm) {
 		$.each(["warehouse", "rejected_warehouse"], function(i, field) {
 			frm.set_query(field, "items", function() {

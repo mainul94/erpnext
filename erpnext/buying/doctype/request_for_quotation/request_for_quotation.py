@@ -14,23 +14,20 @@ from frappe.core.doctype.communication.email import make
 from erpnext.accounts.party import get_party_account_currency, get_party_details
 from erpnext.stock.doctype.material_request.material_request import set_missing_values
 from erpnext.controllers.buying_controller import BuyingController
+from erpnext.buying.utils import validate_for_items
 
 STANDARD_USERS = ("Guest", "Administrator")
 
 class RequestforQuotation(BuyingController):
 	def validate(self):
 		self.validate_duplicate_supplier()
-		self.validate_common()
+		validate_for_items(self)
 		self.update_email_id()
 
 	def validate_duplicate_supplier(self):
 		supplier_list = [d.supplier for d in self.suppliers]
 		if len(supplier_list) != len(set(supplier_list)):
 			frappe.throw(_("Same supplier has been entered multiple times"))
-
-	def validate_common(self):
-		pc = frappe.get_doc('Purchase Common')
-		pc.validate_for_items(self)
 
 	def update_email_id(self):
 		for rfq_supplier in self.suppliers:
@@ -130,7 +127,7 @@ class RequestforQuotation(BuyingController):
 		self.send_email(data, sender, subject, message, attachments)
 
 	def send_email(self, data, sender, subject, message, attachments):
-		make(subject = subject, content=message,recipients=data.email_id, 
+		make(subject = subject, content=message,recipients=data.email_id,
 			sender=sender,attachments = attachments, send_email=True,
 		     	doctype=self.doctype, name=self.name)["name"]
 
@@ -158,6 +155,12 @@ def get_list_context(context=None):
 	list_context = get_list_context(context)
 	list_context["show_sidebar"] = True
 	return list_context
+
+def get_supplier_contacts(doctype, txt, searchfield, start, page_len, filters):
+	return frappe.db.sql(""" select `tabContact`.name from `tabContact`, `tabDynamic Link`
+		where `tabDynamic Link`.link_doctype = 'Supplier' and (`tabDynamic Link`.link_name = %(name)s
+		or `tabDynamic Link`.link_name like %(txt)s) and `tabContact`.name = `tabDynamic Link`.parent
+		limit %(start)s, %(page_len)s""", {"start": start, "page_len":page_len, "txt": "%%%s%%" % txt, "name": filters.get('supplier')})
 
 # This method is used to make supplier quotation from material request form.
 @frappe.whitelist()
@@ -244,26 +247,26 @@ def get_rfq_doc(doctype, name, supplier_idx):
 		args = doc.get('suppliers')[cint(supplier_idx) - 1]
 		doc.update_supplier_part_no(args)
 		return doc
-		
+
 @frappe.whitelist()
 def get_item_from_material_requests_based_on_supplier(source_name, target_doc = None):
 	mr_items_list = frappe.db.sql("""
 		SELECT
 			mr.name, mr_item.item_code
 		FROM
-			`tabItem` as item, 
-			`tabItem Supplier` as item_supp, 
-			`tabMaterial Request Item` as mr_item, 
-			`tabMaterial Request`  as mr 
-		WHERE item_supp.supplier = %(supplier)s 
-			AND item.name = item_supp.parent 
-			AND mr_item.parent = mr.name 
-			AND mr_item.item_code = item.name 
-			AND mr.status != "Stopped" 
-			AND mr.material_request_type = "Purchase" 
-			AND mr.docstatus = 1 
+			`tabItem` as item,
+			`tabItem Supplier` as item_supp,
+			`tabMaterial Request Item` as mr_item,
+			`tabMaterial Request`  as mr
+		WHERE item_supp.supplier = %(supplier)s
+			AND item.name = item_supp.parent
+			AND mr_item.parent = mr.name
+			AND mr_item.item_code = item.name
+			AND mr.status != "Stopped"
+			AND mr.material_request_type = "Purchase"
+			AND mr.docstatus = 1
 			AND mr.per_ordered < 99.99""", {"supplier": source_name}, as_dict=1)
-	
+
 	material_requests = {}
 	for d in mr_items_list:
 		material_requests.setdefault(d.name, []).append(d.item_code)
@@ -287,6 +290,5 @@ def get_item_from_material_requests_based_on_supplier(source_name, target_doc = 
 				]
 			}
 		}, target_doc)
-		
+
 	return target_doc
-		

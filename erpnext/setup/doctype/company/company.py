@@ -10,9 +10,11 @@ import frappe.defaults
 
 
 from frappe.model.document import Document
+from frappe.geo.address_and_contact import load_address_and_contact
 
 class Company(Document):
 	def onload(self):
+		load_address_and_contact(self, "company")
 		self.get("__onload")["transactions_exist"] = self.check_if_transactions_exist()
 
 	def check_if_transactions_exist(self):
@@ -50,7 +52,7 @@ class Company(Document):
 	def validate_default_accounts(self):
 		for field in ["default_bank_account", "default_cash_account", "default_receivable_account", "default_payable_account",
 			"default_expense_account", "default_income_account", "stock_received_but_not_billed",
-			"stock_adjustment_account", "expenses_included_in_valuation"]:
+			"stock_adjustment_account", "expenses_included_in_valuation", "default_payroll_payable_account"]:
 				if self.get(field):
 					for_company = frappe.db.get_value("Account", self.get(field), "company")
 					if for_company != self.name:
@@ -79,7 +81,7 @@ class Company(Document):
 		if not frappe.local.flags.ignore_chart_of_accounts:
 			self.set_default_accounts()
 			if self.default_cash_account:
-				self.mode_of_payment()
+				self.set_mode_of_payment_account()
 
 		if self.default_currency:
 			frappe.db.set_value("Currency", self.default_currency, "enabled", 1)
@@ -123,7 +125,7 @@ class Company(Document):
 			{"company": self.name, "account_type": "Receivable", "is_group": 0}))
 		frappe.db.set(self, "default_payable_account", frappe.db.get_value("Account",
 			{"company": self.name, "account_type": "Payable", "is_group": 0}))
-			
+
 	def validate_coa_input(self):
 		if self.create_chart_of_accounts_based_on == "Existing Company":
 			self.chart_of_accounts = None
@@ -166,9 +168,10 @@ class Company(Document):
 		if account:
 			self.db_set(fieldname, account)
 
-	def mode_of_payment(self):
+	def set_mode_of_payment_account(self):
 		cash = frappe.db.get_value('Mode of Payment', {'type': 'Cash'}, 'name')
-		if cash and not frappe.db.get_value('Mode of Payment Account', {'company': self.name}):
+		if cash and self.default_cash_account \
+				and not frappe.db.get_value('Mode of Payment Account', {'company': self.name}):
 			mode_of_payment = frappe.get_doc('Mode of Payment', cash)
 			mode_of_payment.append('accounts', {
 				'company': self.name,
@@ -282,7 +285,7 @@ def replace_abbr(company, old, new):
 			if len(parts) == 1 or parts[1].lower() == old.lower():
 				frappe.rename_doc(dt, d[0], parts[0] + " - " + new)
 
-	for dt in ["Account", "Cost Center", "Warehouse"]:
+	for dt in ["Warehouse", "Account", "Cost Center"]:
 		_rename_record(dt)
 		frappe.db.commit()
 
@@ -294,7 +297,3 @@ def get_name_with_abbr(name, company):
 		parts.append(company_abbr)
 
 	return " - ".join(parts)
-
-def get_company_currency(company):
-	return frappe.local_cache("company_currency", company,
-		lambda: frappe.db.get_value("Company", company, "default_currency"))

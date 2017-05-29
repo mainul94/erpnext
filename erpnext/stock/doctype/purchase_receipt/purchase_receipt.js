@@ -1,11 +1,17 @@
 // Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: GNU General Public License v3. See license.txt
 
-{% include 'erpnext/buying/doctype/purchase_common/purchase_common.js' %};
+{% include 'erpnext/public/js/controllers/buying.js' %};
 
 frappe.provide("erpnext.stock");
 
 frappe.ui.form.on("Purchase Receipt", {
+	setup: function(frm) {
+		frm.custom_make_buttons = {
+			'Stock Entry': 'Return',
+			'Purchase Invoice': 'Invoice'
+		}
+	},
 	onload: function(frm) {
 		$.each(["warehouse", "rejected_warehouse"], function(i, field) {
 			frm.set_query(field, "items", function() {
@@ -31,7 +37,13 @@ frappe.ui.form.on("Purchase Receipt", {
 });
 
 erpnext.stock.PurchaseReceiptController = erpnext.buying.BuyingController.extend({
+	setup: function(doc) {
+		this.setup_posting_date_time_check();
+		this._super(doc);
+	},
+
 	refresh: function() {
+		var me = this;
 		this._super();
 		if(this.frm.doc.docstatus===1) {
 			this.show_stock_ledger();
@@ -42,17 +54,20 @@ erpnext.stock.PurchaseReceiptController = erpnext.buying.BuyingController.extend
 
 		if(!this.frm.doc.is_return && this.frm.doc.status!="Closed") {
 			if(this.frm.doc.docstatus==0) {
-				cur_frm.add_custom_button(__('Purchase Order'),
+				this.frm.add_custom_button(__('Purchase Order'),
 					function() {
 						erpnext.utils.map_current_doc({
 							method: "erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_receipt",
 							source_doctype: "Purchase Order",
+							target: me.frm,
+							setters: {
+								supplier: me.frm.doc.supplier || undefined,
+							},
 							get_query_filters: {
-								supplier: cur_frm.doc.supplier || undefined,
 								docstatus: 1,
 								status: ["!=", "Closed"],
 								per_received: ["<", 99.99],
-								company: cur_frm.doc.company
+								company: me.frm.doc.company
 							}
 						})
 				}, __("Get items from"));

@@ -42,7 +42,7 @@ class ProductionPlanningTool(Document):
 			select distinct so.name, so.transaction_date, so.customer, so.base_grand_total
 			from `tabSales Order` so, `tabSales Order Item` so_item
 			where so_item.parent = so.name
-				and so.docstatus = 1 and so.status != "Stopped"
+				and so.docstatus = 1 and so.status not in ("Stopped", "Closed")
 				and so.company = %(company)s
 				and so_item.qty > so_item.delivered_qty {0} {1}
 				and (exists (select name from `tabBOM` bom where bom.item=so_item.item_code
@@ -134,7 +134,7 @@ class ProductionPlanningTool(Document):
 			item_condition = ' and so_item.item_code = "{0}"'.format(frappe.db.escape(self.fg_item))
 
 		items = frappe.db.sql("""select distinct parent, item_code, warehouse,
-			(qty - delivered_qty) as pending_qty
+			(qty - delivered_qty)*conversion_factor as pending_qty
 			from `tabSales Order Item` so_item
 			where parent in (%s) and docstatus = 1 and qty > delivered_qty
 			and exists (select name from `tabBOM` bom where bom.item=so_item.item_code

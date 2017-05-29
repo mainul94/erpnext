@@ -6,8 +6,14 @@ cur_frm.pformat.print_heading = 'Invoice';
 
 {% include 'erpnext/selling/sales_common.js' %};
 
+cur_frm.add_fetch('customer', 'tax_id', 'tax_id');
+
 frappe.provide("erpnext.accounts");
 erpnext.accounts.SalesInvoiceController = erpnext.selling.SellingController.extend({
+	setup: function(doc) {
+		this.setup_posting_date_time_check();
+		this._super(doc);
+	},
 	onload: function() {
 		var me = this;
 		this._super();
@@ -51,7 +57,7 @@ erpnext.accounts.SalesInvoiceController = erpnext.selling.SellingController.exte
 			})
 
 			if(doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
-				cur_frm.add_custom_button(doc.update_stock ? __('Sales Return') : __('Credit Note'),
+				cur_frm.add_custom_button(__('Return / Credit Note'),
 					this.make_sales_return, __("Make"));
 				cur_frm.page.set_inner_btn_group_as_primary(__("Make"));
 			}
@@ -106,33 +112,44 @@ erpnext.accounts.SalesInvoiceController = erpnext.selling.SellingController.exte
 	},
 
 	sales_order_btn: function() {
-		this.$sales_order_btn = cur_frm.add_custom_button(__('Sales Order'),
+		var me = this;
+		this.$sales_order_btn = this.frm.add_custom_button(__('Sales Order'),
 			function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.selling.doctype.sales_order.sales_order.make_sales_invoice",
 					source_doctype: "Sales Order",
+					target: me.frm,
+					setters: {
+						customer: me.frm.doc.customer || undefined,
+					},
 					get_query_filters: {
 						docstatus: 1,
 						status: ["!=", "Closed"],
 						per_billed: ["<", 99.99],
-						customer: cur_frm.doc.customer || undefined,
-						company: cur_frm.doc.company
+						company: me.frm.doc.company
 					}
 				})
 			}, __("Get items from"));
 	},
 
 	delivery_note_btn: function() {
-		this.$delivery_note_btn = cur_frm.add_custom_button(__('Delivery Note'),
+		var me = this;
+		this.$delivery_note_btn = this.frm.add_custom_button(__('Delivery Note'),
 			function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice",
 					source_doctype: "Delivery Note",
+					target: me.frm,
+					date_field: "posting_date",
+					setters: {
+						customer: me.frm.doc.customer || undefined
+					},
 					get_query: function() {
 						var filters = {
-							company: cur_frm.doc.company
+							docstatus: 1,
+							company: me.frm.doc.company
 						};
-						if(cur_frm.doc.customer) filters["customer"] = cur_frm.doc.customer;
+						if(me.frm.doc.customer) filters["customer"] = me.frm.doc.customer;
 						return {
 							query: "erpnext.controllers.queries.get_delivery_notes_to_be_billed",
 							filters: filters
@@ -306,7 +323,8 @@ cur_frm.cscript.hide_fields = function(doc) {
 		}
 	}
 
-	item_fields_stock = ['serial_no', 'batch_no', 'actual_qty', 'expense_account', 'warehouse', 'expense_account', 'warehouse']
+	item_fields_stock = ['batch_no', 'actual_batch_qty', 'actual_qty', 'expense_account',
+		'warehouse', 'expense_account', 'quality_inspection']
 	cur_frm.fields_dict['items'].grid.set_column_disp(item_fields_stock,
 		(cint(doc.update_stock)==1 || cint(doc.is_return)==1 ? true : false));
 
@@ -321,6 +339,7 @@ cur_frm.cscript.hide_fields = function(doc) {
 
 cur_frm.cscript.update_stock = function(doc, dt, dn) {
 	cur_frm.cscript.hide_fields(doc, dt, dn);
+	this.frm.fields_dict.items.grid.toggle_reqd("item_code", doc.update_stock? true: false)
 }
 
 cur_frm.cscript['Make Delivery Note'] = function() {
@@ -469,6 +488,12 @@ cur_frm.set_query("asset", "items", function(doc, cdt, cdn) {
 
 frappe.ui.form.on('Sales Invoice', {
 	setup: function(frm){
+		frm.custom_make_buttons = {
+			'Delivery Note': 'Delivery',
+			'Sales Invoice': 'Sales Return',
+			'Payment Request': 'Payment Request',
+			'Payment': 'Payment Entry'
+		},
 		frm.fields_dict["timesheets"].grid.get_field("time_sheet").get_query = function(doc, cdt, cdn){
 			return{
 				query: "erpnext.projects.doctype.timesheet.timesheet.get_timesheet",

@@ -3,9 +3,16 @@
 
 frappe.provide("erpnext.buying");
 
-{% include 'erpnext/buying/doctype/purchase_common/purchase_common.js' %};
+{% include 'erpnext/public/js/controllers/buying.js' %};
 
 frappe.ui.form.on("Purchase Order", {
+	setup: function(frm) {
+		frm.custom_make_buttons = {
+			'Purchase Receipt': 'Receipt',
+			'Purchase Invoice': 'Invoice',
+			'Stock Entry': 'Material to Supplier'
+		}
+	},
 	onload: function(frm) {
 		erpnext.queries.setup_queries(frm, "Warehouse", function() {
 			return erpnext.queries.warehouse(frm.doc);
@@ -28,10 +35,8 @@ erpnext.buying.PurchaseOrderController = erpnext.buying.BuyingController.extend(
 			var item = cur_frm.doc.items[i];
 			if(item.delivered_by_supplier !== 1) {
 				allow_receipt = true;
-			}
-
-			else {
-				is_drop_ship = true
+			} else {
+				is_drop_ship = true;
 			}
 
 			if(is_drop_ship && allow_receipt) {
@@ -148,30 +153,37 @@ erpnext.buying.PurchaseOrderController = erpnext.buying.BuyingController.extend(
 	},
 
 	add_from_mappers: function() {
-		cur_frm.add_custom_button(__('Material Request'),
+		var me = this;
+		this.frm.add_custom_button(__('Material Request'),
 			function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.stock.doctype.material_request.material_request.make_purchase_order",
 					source_doctype: "Material Request",
+					target: me.frm,
+					setters: {
+						company: me.frm.doc.company
+					},
 					get_query_filters: {
 						material_request_type: "Purchase",
 						docstatus: 1,
 						status: ["!=", "Stopped"],
 						per_ordered: ["<", 99.99],
-						company: cur_frm.doc.company
 					}
 				})
 			}, __("Add items from"));
 
-		cur_frm.add_custom_button(__('Supplier Quotation'),
+		this.frm.add_custom_button(__('Supplier Quotation'),
 			function() {
 				erpnext.utils.map_current_doc({
 					method: "erpnext.buying.doctype.supplier_quotation.supplier_quotation.make_purchase_order",
 					source_doctype: "Supplier Quotation",
+					target: me.frm,
+					setters: {
+						company: me.frm.doc.company
+					},
 					get_query_filters: {
 						docstatus: 1,
 						status: ["!=", "Stopped"],
-						company: cur_frm.doc.company
 					}
 				})
 			}, __("Add items from"));
